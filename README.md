@@ -1,4 +1,4 @@
-Nitro cores migen/litex wrappers
+Nitro cores Migen/LiteX wrappers
 ================================
 
 This repository contains wrappers to allow to use some of the Nitro FPGA cores
