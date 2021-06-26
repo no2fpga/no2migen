@@ -1,3 +1,6 @@
 [submodule "src/no2migen/cores/no2usb"]
 	path = src/no2migen/cores/no2usb
 	url = https://github.com/no2fpga/no2usb.git
+[submodule "src/no2migen/cores/no2muacm-bin"]
+	path = src/no2migen/cores/no2muacm-bin
+	url = https://github.com/no2fpga/no2muacm-bin.git

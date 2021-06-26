@@ -11,14 +11,16 @@ import importlib
 import math
 import os
 import pkg_resources
+import tempfile
 
 from migen import *
 from migen.genlib.cdc import MultiReg, PulseSynchronizer
 
-from litex.soc.interconnect import wishbone
+from litex.soc.cores.uart import UART
+from litex.soc.interconnect import stream, wishbone
 
 
-__all__ = [ 'NitroUSB' ]
+__all__ = [ 'NitroUSB', 'NitroMuAcmUart' ]
 
 
 
@@ -223,3 +225,192 @@ class NitroUSB(Module):
 		with open(os.path.join(gateware_dir, 'usb_trans_mc.hex'), 'w') as fh:
 			for v in self.gen_microcode():
 				fh.write(f'{v:04x}\n')
+
+
+class NitroMuAcmCore(Module):
+	"""Wrapper for the Nitro FPGA μACM Core
+
+	Attributes
+    ----------
+
+	sink : stream.Endpoint([("data", 8)])
+		Stream sink to send characters to the host. The 'last' signal can
+		be used to force a packet flush after a given char. The 'first'
+		signal is ignored.
+
+	source : stream.Endpoint([("data", 8)])
+		Stream source providing characters sent from the host. The 'last'
+		signal marks packet boundaries (although for ACM those should be
+		ignored). The 'first' signal is not used and fixed to 0.
+
+	bootloader_req : Signal(), out
+		Pulse signal when a DFU_DETACH request is received, requesting a reboot
+		to bootloader mode
+	"""
+
+	def __init__(self, platform, pads, **kwargs):
+
+		self.sink   = sink   = stream.Endpoint([("data", 8)])
+		self.source = source = stream.Endpoint([("data", 8)])
+
+		self.bootloader_req = Signal()
+
+		platform.add_source(self.gen_customized_ip(**kwargs), language='verilog')
+
+		self.specials += Instance("muacm",
+			io_usb_dp       = pads.d_p,
+			io_usb_dn       = pads.d_n,
+			o_usb_pu        = pads.pullup,
+			i_in_data       = sink.data,
+			i_in_last       = sink.last,
+			i_in_valid      = sink.valid,
+			o_in_ready      = sink.ready,
+			i_in_flush_now  = 0,
+			i_in_flush_time = 1,
+			o_out_data      = source.data,
+			o_out_last      = source.last,
+			o_out_valid     = source.valid,
+			i_out_ready     = source.ready,
+			o_bootloader    = self.bootloader_req,
+			i_clk           = ClockSignal(),
+			i_rst           = ResetSignal()
+		)
+
+	def gen_customized_ip(self, **kwargs):
+		# Load the customizer as module
+		mod_spec = importlib.util.spec_from_file_location(
+			'no2migen.no2muacm_customize',
+			pkg_resources.resource_filename('no2migen', 'cores/no2muacm-bin/muacm_customize.py')
+		)
+		no2muacm_customize = importlib.util.module_from_spec(mod_spec)
+		mod_spec.loader.exec_module(no2muacm_customize)
+
+		# Load source
+		sf = no2muacm_customize.MuAcmPatcher()
+		sf.load(pkg_resources.resource_filename('no2migen', 'cores/no2muacm-bin/muacm.v'))
+
+		# Apply requested customization
+		if kwargs.get('vid') is not None:
+			sf.set_vid(kwargs['vid'])
+
+		if kwargs.get('pid') is not None:
+			sf.set_pid(kwargs['pid'])
+
+		if kwargs.get('vendor') is not None:
+			sf.set_vendor(kwargs['vendor'])
+
+		if kwargs.get('product') is not None:
+			sf.set_product(kwargs['product'])
+
+		if kwargs.get('serial') is not None:
+			sf.set_serial(kwargs['serial'])
+
+		if bool(kwargs.get('no_dfu_rt')) is True:
+			sf.disable_dfu_rt()
+
+		# Save to temporary file
+		self.ip_file = tempfile.NamedTemporaryFile(suffix='.v')
+		sf.save(self.ip_file.name)
+
+		return self.ip_file.name
+
+
+class NitroMuAcmXClk(Module):
+	"""Lightweight clock crossing for the data interface of NitroMuAcmCore
+
+	Use ClockDomainsRenamer to assign to the right domains.
+
+	Attributes
+    ----------
+
+	sink : stream.Endpoint([("data", 8)])
+		Stream sink in the 'sink' clock domain
+
+	source : stream.Endpoint([("data", 8)])
+		Stream source in the 'source' clock domain
+	"""
+
+	def __init__(self):
+		# Endpoints and associated domains
+		self.sink   = sink   = stream.Endpoint([("data", 8)])
+		self.source = source = stream.Endpoint([("data", 8)])
+
+		# Signals
+		send_snk      = Signal()
+		send_sync_src = Signal(2)
+
+		ack_src       = Signal()
+		ack_sync_snk  = Signal(2)
+
+		# Data is straight across
+		self.comb += [
+			source.data.eq  (sink.data),
+			source.first.eq (sink.first),
+			source.last.eq  (sink.last),
+		]
+
+		# Handshaking
+		self.sync.sink += [
+			send_snk.eq( (send_snk | (sink.valid & ~sink.ready) ) & ~ack_sync_snk[0] ),
+			ack_sync_snk[1].eq( ack_sync_snk[0] ),
+			ack_sync_snk[0].eq( ack_src ),
+			sink.ready.eq( ack_sync_snk[0] & ~ack_sync_snk[1] ),
+		]
+
+		self.sync.source += [
+			send_sync_src[1].eq( send_sync_src[0] ),
+			send_sync_src[0].eq( send_snk ),
+			source.valid.eq( (source.valid & ~source.ready) | (send_sync_src[0] & ~send_sync_src[1]) ),
+			ack_src.eq( (ack_src & send_sync_src[0]) | (source.valid & source.ready) ),
+		]
+
+
+class NitroMuAcmUart(UART):
+	"""
+	UART core compatible with the standard LiteX UART interface and that uses
+	the Nitro FPGA no2muacm core to provide uart of USB connection.
+
+	Attributes
+    ----------
+
+    In addition to the standard "Uart" interface signals:
+
+	bootloader_req : Signal(), out
+		Pulse signal when a DFU_DETACH request is received, requesting a reboot
+		to bootloader mode
+	"""
+
+	def __init__(self, platform, pads, sync=False, **kwargs):
+		assert kwargs.get("phy", None) == None
+		ckw = dict([(k,kwargs.pop(k)) for k in ['vid', 'pid', 'vendor', 'product', 'serial', 'no_dfu_rt'] if k in kwargs])
+		UART.__init__(self, **kwargs)
+
+		self.bootloader_req = Signal()
+
+		if sync:
+			# Synchronous case
+			self.submodules.muacm = NitroMuAcmCore(platform, pads, **ckw)
+
+			self.comb += self.muacm.source.connect(self.sink)
+			self.comb += self.source.connect(self.muacm.sink)
+			self.comb += self.bootloader_req.eq(self.muacm.bootloader_req)
+
+		else:
+			# Async case
+			self.submodules.x_rx = x_rx = ClockDomainsRenamer({"sink": "usb_48", "source": "sys"   })(NitroMuAcmXClk())
+			self.submodules.x_tx = x_tx = ClockDomainsRenamer({"sink": "sys",    "source": "usb_48"})(NitroMuAcmXClk())
+
+			self.comb += x_rx.source.connect(self.sink)
+			self.comb += self.source.connect(x_tx.sink)
+
+			self.submodules.muacm = ClockDomainsRenamer('usb_48')(NitroMuAcmCore(platform, pads, **ckw))
+
+			self.comb += self.muacm.source.connect(x_rx.sink)
+			self.comb += x_tx.source.connect(self.muacm.sink)
+
+			boot_req_xclk = PulseSynchronizer("usb_48", "sys")
+			self.submodules += boot_req_xclk
+			self.comb += [
+				boot_req_xclk.i.eq(self.muacm.bootloader_req),
+				self.bootloader_req.eq(boot_req_xclk.o),
+			]
