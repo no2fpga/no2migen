@@ -28,8 +28,8 @@ class NitroUSB(Module):
 
 		# Exposed signals
 		self.bus = wishbone.Interface(width)
-		self.o_irq = Signal()
-		self.o_sof = Signal()
+		self.irq = Signal()
+		self.sof = Signal()
 
 		# Internal signals
 		b_rdata_ep   = Signal(width)
@@ -62,8 +62,8 @@ class NitroUSB(Module):
 				b_ack_core.eq(ub_ack),
 
 				# Aux
-				self.o_irq.eq(u_irq),
-				self.o_sof.eq(u_sof),
+				self.irq.eq(u_irq),
+				self.sof.eq(u_sof),
 			]
 
 		else:
@@ -109,14 +109,14 @@ class NitroUSB(Module):
 			]
 
 				# IRQ
-			self.specials += MultiReg(u_irq, self.o_irq)
+			self.specials += MultiReg(u_irq, self.irq)
 
 				# SoF pulse
 			ps_sof = PulseSynchronizer("usb_48", "sys")
 			self.submodules += ps_sof
 			self.comb += [
 				ps_sof.i.eq(u_sof),
-				self.o_sof.eq(ps_sof.o),
+				self.sof.eq(ps_sof.o),
 			]
 
 		# EP interface
