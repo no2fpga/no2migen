@@ -23,6 +23,25 @@ __all__ = [ 'NitroUSB' ]
 
 
 class NitroUSB(Module):
+	"""Wrapper for the Nitro FPGA USB Core
+
+	Interface signal are in the 'sys' clock domain.
+	A 'usb_48' domain is required to run all the USB logic at 48 MHz.
+	If both domains are identical, some CDC logic can be simplified and the
+	'sync' argument should be set to True when creating the core.
+
+	Attributes
+    ----------
+
+	bus : wishbone.Interface(width)
+		Wishbone interface to both the CSRs and the EP buffers
+
+	irq : Signal(), out
+		IRQ level output to the CPU (assuming IRQ are enabled in the core)
+
+	sof : Signal(), out
+		Start-of-Frame pulse emitted every time a SoF packet is received
+	"""
 
 	def __init__(self, platform, pads, width=32, evt_fifo=False, irq=False, sync=False):
 
