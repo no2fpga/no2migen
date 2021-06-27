@@ -10,7 +10,8 @@ Wrapped Cores
 
 ### `no2usb`: USB device core
 
-This core is wrapped as `no2migen.litex.NitroUSB`.
+This core is wrapped as `no2migen.litex.NitroUSB` for use as a wishbone
+LiteX peripheral.
 
 The core can be added as such (in the `__init__` of your `SoCCore`) :
 
@@ -39,6 +40,54 @@ The options available for the core are :
 
  * `irq=True/False`: Enables the `o_irq` output of the core so it can generate
    interrupt on activity rather than using polling mode in the driver.
+
+ * `sync=True/False`: If your `sys` domain is the same as the `usb_48` domain,
+   both running at the same 48 MHz clock, then some CDC circuitry can be
+   omitted.
+
+
+### `no2muacm`: USB CDC ACM core
+
+This core is wrapped as `no2migen.litex.NitroMuAcmUart` for use as a standard
+LiteX UART (compatible with other UART options).
+
+If you just want your SoC to have an UART / Console over USB and don't
+want to run a USB stack yourself in your core, you can use this as an
+alternative to having a raw USB device core that you must drive yourself.
+
+To use it, you must first disable the built-in UART added by passing
+`with_uart = False` to the `SoCCore.__init__` call, usually using
+`kwargs["with_uart"] = False` to overwrite the default options.
+
+And then create the UART module and add it yourself in the `__init__` of
+your `SoCCore`:
+
+```python
+from no2migen.litex import NitroMuAcmUart
+
+usb_pads = self.platform.request("usb")
+self.submodules.uart = NitroMuAcmUart(platform, usb_pads)
+self.add_constant("UART_POLLING")
+```
+
+The `usb` resource must define the pads for `d_p`, `d_n` and `pullup`.
+Clocking wise, the core works at any `sys` frequency for its interface to
+the SoC but needs a `usb_48` `ClockDomain` to be defined and running at
+48 MHz for the USB SIE part.
+
+The core also offers a `bootloader_req` that generates a pulse if the
+hosts requests a reboot to bootloader using a `DFU_DETACH` request. This
+should be tied to whatever logic you have to reboot your FPGA to its
+bootloader (assuming there is one).
+
+The options available for the core are :
+
+ * `vid` / `pid`: Sets customs USB PID/VID for the core.
+
+ * `vendor` / `product` / `serial`: Sets the corresponding string descriptors
+   (length limited to 16).
+
+ * `no_dfu_rt`: Disables the DFU runtime function of the core.
 
  * `sync=True/False`: If your `sys` domain is the same as the `usb_48` domain,
    both running at the same 48 MHz clock, then some CDC circuitry can be
