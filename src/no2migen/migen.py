@@ -149,9 +149,9 @@ class NitroMuAcmXClk(Module):
 	   AXI-Stream style data interface (ingress, 'in_' clock domain)
 
 	out_data  : Signal(8), out
-	out_last  : Signal(), out 
-	out_valid : Signal(), out 
-	out_ready : Signal(), in 
+	out_last  : Signal(), out
+	out_valid : Signal(), out
+	out_ready : Signal(), in
 	   AXI-Stream style data interface (egress, 'out' clock domain)
 	"""
 
