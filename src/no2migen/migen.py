@@ -225,25 +225,25 @@ class NitroMuAcmAsync(Module):
 
 		# Wire stuff up
 		self.comb += [
-			self.xin.in_data.eq(self.in_data),
-			self.xin.in_last.eq(self.in_last),
-			self.xin.in_valid.eq(self.in_valid),
-			self.in_ready.eq(self.xin.in_ready),
+			xin.in_data.eq(self.in_data),
+			xin.in_last.eq(self.in_last),
+			xin.in_valid.eq(self.in_valid),
+			self.in_ready.eq(xin.in_ready),
 
-			self.core.in_data.eq(self.xin.out_data),
-			self.core.in_last.eq(self.xin.out_last),
-			self.core.in_valid.eq(self.xin.out_valid),
-			self.xin.out_ready.eq(self.core.in_ready),
+			core.in_data.eq(xin.out_data),
+			core.in_last.eq(xin.out_last),
+			core.in_valid.eq(xin.out_valid),
+			xin.out_ready.eq(core.in_ready),
 
-			self.xout.in_data.eq(self.core.out_data),
-			self.xout.in_last.eq(self.core.out_last),
-			self.xout.in_valid.eq(self.core.out_valid),
-			self.core.out_ready.eq(self.xout.in_ready),
+			xout.in_data.eq(core.out_data),
+			xout.in_last.eq(core.out_last),
+			xout.in_valid.eq(core.out_valid),
+			core.out_ready.eq(xout.in_ready),
 
-			self.out_data.eq(self.xout.out_data),
-			self.out_last.eq(self.xout.out_last),
-			self.out_valid.eq(self.xout.out_valid),
-			self.xout.out_ready.eq(self.out_ready),
+			self.out_data.eq(xout.out_data),
+			self.out_last.eq(xout.out_last),
+			self.out_valid.eq(xout.out_valid),
+			xout.out_ready.eq(self.out_ready),
 		]
 
 		# X-clk for other signals
@@ -291,9 +291,9 @@ class NitroMuAcmBuffered(Module):
 
 		# Wire stuff up
 		self.comb += [
-			self.core.in_flush_now.eq(self.in_flush_now),
-			self.core.in_flush_time.eq(self.in_flush_time),
-			self.bootloader_req.eq(self.core.bootloader_req),
+			core.in_flush_now.eq(self.in_flush_now),
+			core.in_flush_time.eq(self.in_flush_time),
+			self.bootloader_req.eq(core.bootloader_req),
 
 			fin.din[0:8].eq(self.in_data),
 			fin.din[8].eq(self.in_last),
