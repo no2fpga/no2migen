@@ -48,6 +48,8 @@ The options available for the core are :
 
 ### `no2muacm`: USB CDC ACM core
 
+#### LiteX variant
+
 This core is wrapped as `no2migen.litex.NitroMuAcmUart` for use as a standard
 LiteX UART (compatible with other UART options).
 
@@ -92,6 +94,22 @@ The options available for the core are :
  * `sync=True/False`: If your `sys` domain is the same as the `usb_48` domain,
    both running at the same 48 MHz clock, then some CDC circuitry can be
    omitted.
+
+#### Pure Migen variant
+
+This core is also wrapped as `no2migen.NitroMuAcmSync`,
+`no2migen.NitroMuAcmAsync` and `no2migen.NitroMuAcmBuffered`.
+
+Theses 3 variants expose the same kind of data interface, derived from
+AXI-Stream. Refer to the python docstring for the details. The `Sync` variant
+is meant to run entirely in one clock domain and it must be 48 MHz. The `Async`
+variant uses a `usb_48` clock domain for the USB part but all user interfacing
+is done in the `sys` doman and this can be anything. The `Buffered` variant
+can use either clocking strategy (depending on `sync` parameter) but it adds
+some FIFO to increase efficiency.
+
+For all variants the customizations options are the same as explained in the
+LiteX variant above.
 
 
 Limitations
